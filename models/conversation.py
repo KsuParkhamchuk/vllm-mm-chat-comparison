@@ -1,8 +1,8 @@
+import uuid
+from typing import List
 from datetime import datetime
 from pydantic import BaseModel, Field
 from .message import Message
-import uuid
-from typing import List
 
 class Conversation(BaseModel):
     id: uuid.UUID = Field(default_factory=lambda: uuid.uuid4())
