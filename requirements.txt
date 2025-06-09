@@ -30,7 +30,7 @@ stack-data==0.6.3
 tornado==6.4.2
 traitlets==5.14.3
 wcwidth==0.2.13
-wheel @ file:///opt/homebrew/Cellar/python%403.12/3.12.10/libexec/wheel-0.45.1-py3-none-any.whl#sha256=7789df493a4cd2f847d46cff1a1f64e66b423c745ee5924498e17336da7b9f1e
+#wheel @ file:///opt/homebrew/Cellar/python%403.12/3.12.10/libexec/wheel-0.45.1-py3-none-any.whl#sha256=7789df493a4cd2f847d46cff1a1f64e66b423c745ee5924498e17336da7b9f1e
 wandb
 
 # for vLLM with specific CUDA version
