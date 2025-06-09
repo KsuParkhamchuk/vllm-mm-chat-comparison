@@ -1,4 +1,4 @@
-# This is a multimodel chat that simoulteneously runs inference on two models and compares their outputs.
+# This is a multimodel chat that simultaneously runs inference on two models and compares their outputs.
 
 The chat has **2 modes**:
 
