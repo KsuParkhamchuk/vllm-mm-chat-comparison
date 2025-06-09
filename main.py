@@ -66,8 +66,8 @@ async def update_conversation(
                 llm_response = get_response_sm(room_id=uuid.UUID(room_id), conversation_id=uuid.UUID(conversation_id), prompt=data)
                 await websocket.send_text(llm_response)
             else:
-                llm_response = get_response_cm(room_id=uuid.UUID(room_id), prompt=data)
-                await websocket.send_text(llm_response['content'])
+                llm_response = get_response_cm(room_id=uuid.UUID(room_id), conversation_id=uuid.UUID(conversation_id), prompt=data)
+                await websocket.send_text(llm_response)
             
     except WebSocketDisconnect:
         print("Client disconnected")
