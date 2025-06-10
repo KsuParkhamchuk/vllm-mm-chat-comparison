@@ -4,8 +4,8 @@ VENV_DIR=".venv"
 APP_FILE="main.py"
 HOST="0.0.0.0"
 PORT="8000"
-MODEL_1=""
-MODEL_2=""
+MODEL_1="google/gemma-3-1b-it"
+MODEL_2="google/gemma-3-1b-it"
 PORT_1="8001"
 PORT_2="8002"
 
@@ -40,17 +40,17 @@ echo "Starting worker node on $WORKER_NODE"
 ssh $WORKER_NODE "ray start --address=$HEAD_NODE:$RAY_PORT"
 
 
-# Starting main application
-echo "Starting FastAPI application"
-uvicorn main:app --host $HOST --port $PORT --reload
-
 echo "Serving chat models on dedicated servers"
 vllm serve $MODEL_1 --port $PORT_1 &
 MODEL1_PID=$!
 
-export RAY_ADDRESS="$HEAD_NODE:$RAY_PORT"
-vllm serve $MODEL_2 --port $PORT_2 --tensor-parallel-size 2 &
-MODEL2_PID=$!
+# export RAY_ADDRESS="$HEAD_NODE:$RAY_PORT"
+# vllm serve $MODEL_2 --port $PORT_2 --tensor-parallel-size 2 &
+# MODEL2_PID=$!
+
+# Starting main application
+echo "Starting FastAPI application"
+uvicorn main:app --host $HOST --port $PORT --reload &
 
 cleanup() {
     echo "Stopping all services..."

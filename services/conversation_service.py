@@ -5,7 +5,7 @@ from typing import List, Literal
 import httpx
 from models.conversation import Conversation
 from models.message import Message
-from models.Room import Room
+from models.room import Room
 from data.rooms import rooms
 from config import config
 from .vllm_service import generate_response
@@ -18,12 +18,13 @@ def create_room(mode: Literal["sm", "cm"]):
     """ Create new room object"""
 
     room = Room()
-
+    print(room)
     if mode == "sm":
         room.conversations.append(Conversation(model=config.MODEL1_NAME))
     else:
         room.conversations.append(Conversation(model=config.MODEL1_NAME))
         room.conversations.append(Conversation(model=config.MODEL2_NAME))
+    rooms.append(room)
 
     return room
 
@@ -100,10 +101,11 @@ def get_response_sm(
     return llm_generated_text
 
 async def make_model_request (messages: List[Message], endpoint: str):
+    print(endpoint)
     try:
         async with httpx.AsyncClient() as client:
-            response = client.post(
-                f"http://localhost:{endpoint}/v1/chat/completions",
+            response = await client.post(
+                endpoint,
                 json={
                     "messages": messages,
                     "temperature": 0.8,
@@ -115,7 +117,7 @@ async def make_model_request (messages: List[Message], endpoint: str):
         print(f"Error making model request: {e}")
         return None
 
-def get_response_cm(
+async def get_response_cm(
     room_id: uuid.UUID,
     conversation_id: uuid.UUID,
     prompt: str
@@ -127,13 +129,10 @@ def get_response_cm(
     response = None
     
     if conversation_model == config.MODEL1_NAME:
-        response = asyncio.run(
-                    make_model_request(messages=messages, endpoint=config.MODEL1_ENDPOINT),
-                )
+        response = await make_model_request(messages=messages, endpoint=config.MODEL1_ENDPOINT)
+
     elif conversation_model == config.MODEL2_NAME:
-        response = asyncio.run(
-                    make_model_request(messages=messages, endpoint=config.MODEL2_ENDPOINT),
-                )
+        response = await make_model_request(messages=messages, endpoint=config.MODEL2_ENDPOINT)
 
     if not response:
         llm_error_response = "Sorry, I couldn't generate a response at the moment."

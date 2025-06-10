@@ -5,11 +5,18 @@
     </head>
     <body>
         <main class="container">
-            <button id="new">New conversation</button>
-            <div class="chat"></div>
-            <div class="input-container">
+            <div class="btn-wrapper">
+                <button id="new-sm" class="btn">New conversation single mode</button>
+                <button id="new-cm" class="btn">New conversation comparison mode</button>
+            </div>
+            <div class="chat">
+                <div class="conv sm-conv"></div>
+                <div class="conv cm-conv"></div>
+                <div class="conv cm-conv"></div>
+            </div>
+            <div class="input-wrapper">
                 <input type="text" id="message" placeholder="Type your message here..." class="input">
-                <button id="send">Send</button>
+                <button id="send" class="btn">Send</button>
             </div>
         </main>
     </body>

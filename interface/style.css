@@ -8,14 +8,42 @@
     align-items: center;
 }
 
-.input-container {
+.input-wrapper {
     display: none;
     margin-top: auto;
+    width: 50%
+}
+
+.input {
+    width: 70%;
+    padding: 10px;
 }
 
 .chat {
-    width: 50%;
+    width: 70%;
     margin-top: 50px;
+}
+
+.btn-wrapper {
+    display: flex;
+    gap: 10px;
+}
+
+.btn {
+    padding: 10px;
+    background-color: #fff;
+    border: 1px solid #ccc;
+    border-radius: 20px;
+}
+
+.d-flex {
+    display: flex;
+    justify-content: center;
+}
+
+.d-flex > * {
+    flex: 1;
+    margin: 0 10px;
 }
 
 .usr-message {
@@ -26,4 +54,13 @@
     padding: 10px;
     width: fit-content;
     background-color: #edeed6;
+}
+
+.d-none,
+.conv {
+    display: none;
+}
+
+.d-block {
+    display: block;
 }

@@ -30,7 +30,7 @@ current_file_dir = os.path.dirname(os.path.abspath(__file__))
 static_files_dir = os.path.join(current_file_dir, "interface")
 index_html_path = os.path.join(static_files_dir, "index.html")
 
-@app.post("/{mode}/room")
+@app.post("/room/{mode}")
 def create_new_room(mode: Literal["sm", "cm"]):
     try:
         room = create_room(mode)
@@ -39,8 +39,8 @@ def create_new_room(mode: Literal["sm", "cm"]):
 
     return room
 
-@app.get("/room/{room_id}")
-def get_room_page(room_id: str):
+@app.get("/room/{mode}/{room_id}")
+def get_room_page(mode: Literal["sm", "cm"], room_id: str):
     if os.path.exists(index_html_path):
         return FileResponse(index_html_path, media_type="text/html")
     else:
@@ -61,13 +61,18 @@ async def update_conversation(
     try:
         while True:
             data = await websocket.receive_text()
+            llm_response = None
 
             if mode == 'sm':
                 llm_response = get_response_sm(room_id=uuid.UUID(room_id), conversation_id=uuid.UUID(conversation_id), prompt=data)
-                await websocket.send_text(llm_response)
             else:
-                llm_response = get_response_cm(room_id=uuid.UUID(room_id), conversation_id=uuid.UUID(conversation_id), prompt=data)
-                await websocket.send_text(llm_response)
+                llm_response = await get_response_cm(room_id=uuid.UUID(room_id), conversation_id=uuid.UUID(conversation_id), prompt=data)
+
+            response_data = {
+                "conversation_id": conversation_id,
+                "response": llm_response
+            } 
+            await websocket.send_json(response_data)
             
     except WebSocketDisconnect:
         print("Client disconnected")

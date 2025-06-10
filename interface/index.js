@@ -1,67 +1,112 @@
 const sendBtn = document.getElementById("send");
-const newConvBtn = document.getElementById("new");
+const newRoomSm = document.getElementById("new-sm");
+const newRoomCm = document.getElementById("new-cm");
 const messageInput = document.getElementById("message");
-const inputContainer = document.querySelector(".input-container");
+const inputWrapper = document.querySelector(".input-wrapper");
 const chatContainer = document.querySelector(".chat");
 
-let socket;
+let socketConnections = [];
 
-const establishConnection = (conversation_id) => {
-    socket = new WebSocket(`ws://localhost:8000/ws/conversation/${conversation_id}`);
+const establishConnection = (mode) => {
+    active_room = JSON.parse(localStorage.getItem("active_room"))
 
-    socket.addEventListener("open", () => {
-        console.log("Connected to WebSocket server");
-    });
+    active_room.conversations.forEach(conv => {
+        newSocket = new WebSocket(`ws://localhost:8000/ws/room/${mode}/${active_room.id}/${conv.id}`)
+
+        newSocket.addEventListener("open", () => {
+            console.log(`Connected to WebSocket server for ${conv.model}`);
+        });
+        
+        newSocket.addEventListener("message", (event) => {
+            const message = event.data
+            console.log("Message from server:", message);
+
+            if (mode === 'sm') {
+                appendMessageToSmChat(message, "assistant")
+            }
+            else {
+                appendMessageToCmChat(conv.id, message.response, "assistant")
+            }
+        });
+
+        socketConnections.push({
+            model: conv.model, 
+            socket: newSocket
+        });
+    })
     
-    socket.addEventListener("message", (event) => {
-        const message = event.data
-        console.log("Message from server:", message);
-        appendMessageToTheChat(message, "assistant")
-    });
 }
 
-const appendMessageToTheChat = (message, role) => {
-    const messageWrapper = document.createElement("div");
+const createMessageItem = (message, role) => {
     const messageItem = document.createElement("div");
     
-    messageWrapper.classList.add("msg-wrapper");
     messageItem.classList.add(role == "user" ? "usr-message" : "assistant-message");
-    
     messageItem.textContent = message;
+
+    return messageItem;
+}
+
+const appendMessageToCmChat = (conversation_id, message, role) => {
+    const messageItem = createMessageItem(message, role);
+
+    document.querySelectorAll(".cm-conv").forEach(container => {
+        if (container.classList.contains(conversation_id)) {
+            container.appendChild(messageItem)
+        }
+    })
+
+}
+
+const appendMessageToSmChat = (message, role) => {
+    const messageWrapper = document.querySelector(".sm-conv");
+    const messageItem = createMessageItem(message, role)
+
     messageWrapper.appendChild(messageItem);
-    chatContainer.appendChild(messageWrapper);
+}
+
+const appendMessageToAllChats = (message, role) => {
+    const convContainers = document.querySelectorAll(".conv")
+
+    convContainers.forEach(container => {
+        const messageItem = createMessageItem(message, role)
+        container.appendChild(messageItem)
+    })
 }
 
 const sendMessage = () => {
     const message = messageInput.value;
 
-    if (socket && socket.readyState === WebSocket.OPEN && message) {
-        socket.send(message);
+    if (socketConnections.length && message) {
+        socketConnections.forEach(socket => socket.socket.send(message));
         messageInput.value = '';
         console.log("Sent to server: ", message);
-        appendMessageToTheChat(message, "user")
+
+        appendMessageToAllChats(message, "user")
     } else {
         console.error("WebSocket not connected or message is empty")
     }
 }
 
-const redirectToConversation = (conversation_id) => {
-    document.location.href = `/conversation/${conversation_id}`;
+const redirectToRoom = (mode, room_id) => {
+    document.location.href = `/room/${mode}/${room_id}`;
 }
 
-const createNewChat = async () => {
+const createNewRoom = async (mode) => {
     try {
-        const response = await fetch("http://localhost:8000/conversation", { method: "POST" })
+        const response = await fetch(`http://localhost:8000/room/${mode}`, { method: "POST" })
     
         if (response.ok) {
             const data = await response.json();
-            console.log("New conversation created: ", data.conversation_id);
 
-            const conversation_id = data.conversation_id;
-            if (conversation_id) {
-                redirectToConversation(conversation_id);
+            console.log("New room created: ", JSON.stringify(data));
+            localStorage.setItem("active_room", JSON.stringify(data))
+
+            const room_id = data.id;
+
+            if (room_id) {
+                redirectToRoom(mode, room_id);
             } else {
-                console.error("Conversation id not found");
+                console.error("Room id not found");
             }
         }
     } 
@@ -70,19 +115,40 @@ const createNewChat = async () => {
     }
 }
 
-const showChatUI = (isVisible) => {
-    inputContainer.style.display = isVisible ? "block" : "none"; 
+const showChatUI = (isVisible, mode) => {
+    inputWrapper.classList.add(isVisible ? "d-flex" : "d-none"); 
+
+    if (mode === 'cm'){
+        const active_room = JSON.parse(localStorage.getItem("active_room"));
+        const convContainers = document.querySelectorAll(".cm-conv");
+        
+        convContainers.forEach(container => container.classList.add("d-block"))
+        chatContainer.classList.add("d-flex");
+
+        active_room.conversations.forEach((conv, index) => {
+            const modelNameContainer = document.createElement("div")
+            modelNameContainer.innerText = conv.model;
+
+            convContainers[index].classList.add(conv.id);
+            convContainers[index].appendChild(modelNameContainer);
+        })
+    } 
+    else {
+        const convContainer = document.querySelector(".sm-conv");
+        convContainer.classList.add("d-block")
+    }
 }
 
 const initializeChatOnPageLoad = () => {
     const pathParts = window.location.pathname.split('/');
-    if (pathParts.length === 3 && pathParts[1] === 'conversation' && pathParts[2]) {
-        const conversationIdFromUrl = pathParts[2];
-        console.log(`Page loaded for conversation: ${conversationIdFromUrl}. Initializing chat.`);
-        establishConnection(conversationIdFromUrl);
-        showChatUI(true);
+    if (pathParts.length === 4 && pathParts[1] === 'room' && pathParts[2]) {
+        const mode = pathParts[2];
+        const room_id = pathParts[3];
+        console.log(`Page loaded for room: ${room_id}. Initializing chat.`);
+        establishConnection(mode);
+        showChatUI(true, mode);
     } else {
-        console.log("Page loaded. Not a specific conversation URL or ID missing. Hiding chat UI by default.");
+        console.log("Page loaded. Not a specific room URL or ID missing. Hiding chat UI by default.");
     }
 };
 
@@ -90,8 +156,11 @@ const initializeChatOnPageLoad = () => {
 if (sendBtn) {
     sendBtn.addEventListener("click", sendMessage);
 }
-if (newConvBtn) {
-    newConvBtn.addEventListener("click", createNewChat);
+if (newRoomSm) {
+    newRoomSm.addEventListener("click", () => createNewRoom("sm"));
+}
+if(newRoomCm) {
+    newRoomCm.addEventListener("click", () => createNewRoom("cm"));
 }
 
 document.addEventListener('DOMContentLoaded', () => {
