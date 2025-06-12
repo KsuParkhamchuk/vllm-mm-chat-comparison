@@ -1,5 +1,4 @@
 import uuid
-import asyncio
 import logging
 from typing import List, Literal
 import httpx
@@ -20,10 +19,10 @@ def create_room(mode: Literal["sm", "cm"]):
     room = Room()
     print(room)
     if mode == "sm":
-        room.conversations.append(Conversation(model=config.MODEL1_NAME))
+        room.conversations.append(Conversation(model=config.MODEL1))
     else:
-        room.conversations.append(Conversation(model=config.MODEL1_NAME))
-        room.conversations.append(Conversation(model=config.MODEL2_NAME))
+        room.conversations.append(Conversation(model=config.MODEL1))
+        room.conversations.append(Conversation(model=config.MODEL2))
     rooms.append(room)
 
     return room
@@ -112,9 +111,27 @@ async def make_model_request (messages: List[Message], endpoint: str):
                     "max_tokens": 2000
                 }
             )
+
+            print(f"Response status: {response.status_code}")
+            
+            if response.status_code != 200:
+                print(f"Error response: {response.text}")
+                return None
+
+            print(response)
+            
             return response.json()
+    except httpx.ConnectError as e:
+        print(f"Connection error: {e} - Could not connect to {endpoint}")
+        return None
+    except httpx.ReadTimeout as e:
+        print(f"Timeout error: {e} - Request to {endpoint} timed out")
+        return None
+    except httpx.HTTPStatusError as e:
+        print(f"HTTP error: {e}")
+        return None
     except Exception as e:
-        print(f"Error making model request: {e}")
+        print(f"Error making model request: {type(e).__name__}: {e}")
         return None
 
 async def get_response_cm(
@@ -128,10 +145,10 @@ async def get_response_cm(
     messages = update_conversation(room_id=room_id, conversation_id=conversation_id, role="user", content=prompt)
     response = None
     
-    if conversation_model == config.MODEL1_NAME:
+    if conversation_model == config.MODEL1:
         response = await make_model_request(messages=messages, endpoint=config.MODEL1_ENDPOINT)
 
-    elif conversation_model == config.MODEL2_NAME:
+    elif conversation_model == config.MODEL2:
         response = await make_model_request(messages=messages, endpoint=config.MODEL2_ENDPOINT)
 
     if not response:

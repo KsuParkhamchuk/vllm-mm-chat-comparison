@@ -3,11 +3,10 @@
 VENV_DIR=".venv"
 APP_FILE="main.py"
 HOST="0.0.0.0"
-PORT="8000"
-MODEL_1="google/gemma-3-1b-it"
-MODEL_2="google/gemma-3-1b-it"
-PORT_1="8001"
-PORT_2="8002"
+PORT="8002"
+# MODEL_1="google/gemma-3-1b-it"
+# MODEL_2="google/gemma-3-12b-it"
+
 
 
 # Ray setup for distributed model serving
@@ -20,33 +19,41 @@ WORKER_NODE="localhost" # e.g., "192.168.1.101"
 echo "Starting the application"
 
 if [ ! -d "$VENV_DIR" ]; then
-    echo "Activating virtual environment"
-    source "$VENV_DIR/bin/activate"
-else
-    echo "Virtual environment not found. Creating one..."
+echo "Virtual environment not found. Creating one..."
     python -m venv "$VENV_DIR"
     source "$VENV_DIR/bin/activate"
 
     echo "Installing the dependencies"
     pip install -r requirements.txt
+else
+    echo "Activating virtual environment"
+    source "$VENV_DIR/bin/activate"
 fi
 
 
 # Run Ray nodes on remote machines
-echo "Starting head node on $HEAD_NODE"
-ssh $HEAD_NODE "ray start --head --port=$RAY_PORT"
+# echo "Starting head node on $HEAD_NODE"
+# ssh $HEAD_NODE "ray start --head --port=$RAY_PORT"
 
-echo "Starting worker node on $WORKER_NODE"
-ssh $WORKER_NODE "ray start --address=$HEAD_NODE:$RAY_PORT"
+# echo "Starting worker node on $WORKER_NODE"
+# ssh $WORKER_NODE "ray start --address=$HEAD_NODE:$RAY_PORT"ok
 
+if [ -f .env ]; then
+    echo "Loading environment variables from .env file"
+    export $(grep -v '^#' .env | xargs)
+fi
 
 echo "Serving chat models on dedicated servers"
-vllm serve $MODEL_1 --port $PORT_1 &
-MODEL1_PID=$!
+# scp -i ~/.ssh/vastai -P $REMOTE_PORT_1 ./serve_sm.sh ./.env root@$REMOTE_HOST_1:/workspace/
+# ssh -i ~/.ssh/vastai -p $REMOTE_PORT_1 root@$REMOTE_HOST_1 -L $PORT_1:localhost:$PORT_1 "cd /workspace && chmod +x serve_sm.sh && ./serve_sm.sh"
+
+
+echo "Copy script and run server"
 
 # export RAY_ADDRESS="$HEAD_NODE:$RAY_PORT"
-# vllm serve $MODEL_2 --port $PORT_2 --tensor-parallel-size 2 &
-# MODEL2_PID=$!
+scp -i ~/.ssh/vastai -P $REMOTE_PORT_2 ./serve_lg.sh ./.env root@$REMOTE_HOST_2:/workspace/
+ssh -i ~/.ssh/vastai -p $REMOTE_PORT_2 root@$REMOTE_HOST_2 -L $PORT_2:localhost:$PORT_2 "cd /workspace && chmod +x serve_lg.sh && ./serve_lg.sh"
+
 
 # Starting main application
 echo "Starting FastAPI application"

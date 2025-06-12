@@ -19,3 +19,11 @@ Architecture:
 ## Single mode
 
 Runs one model as a part of a main process
+
+## Running the application
+
+Running the following script will start main application and vllm servers
+
+```
+./run.sh
+```

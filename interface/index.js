@@ -11,18 +11,18 @@ const establishConnection = (mode) => {
     active_room = JSON.parse(localStorage.getItem("active_room"))
 
     active_room.conversations.forEach(conv => {
-        newSocket = new WebSocket(`ws://localhost:8000/ws/room/${mode}/${active_room.id}/${conv.id}`)
+        newSocket = new WebSocket(`ws://localhost:8002/ws/room/${mode}/${active_room.id}/${conv.id}`)
 
         newSocket.addEventListener("open", () => {
             console.log(`Connected to WebSocket server for ${conv.model}`);
         });
         
         newSocket.addEventListener("message", (event) => {
-            const message = event.data
+            const message = JSON.parse(event.data)
             console.log("Message from server:", message);
 
             if (mode === 'sm') {
-                appendMessageToSmChat(message, "assistant")
+                appendMessageToSmChat(message.response, "assistant")
             }
             else {
                 appendMessageToCmChat(conv.id, message.response, "assistant")
@@ -50,7 +50,7 @@ const appendMessageToCmChat = (conversation_id, message, role) => {
     const messageItem = createMessageItem(message, role);
 
     document.querySelectorAll(".cm-conv").forEach(container => {
-        if (container.classList.contains(conversation_id)) {
+        if (container.className.includes(conversation_id)) {
             container.appendChild(messageItem)
         }
     })
@@ -93,7 +93,7 @@ const redirectToRoom = (mode, room_id) => {
 
 const createNewRoom = async (mode) => {
     try {
-        const response = await fetch(`http://localhost:8000/room/${mode}`, { method: "POST" })
+        const response = await fetch(`http://localhost:8002/room/${mode}`, { method: "POST" })
     
         if (response.ok) {
             const data = await response.json();
