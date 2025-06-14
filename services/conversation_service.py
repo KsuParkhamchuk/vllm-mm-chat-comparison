@@ -108,7 +108,7 @@ async def make_model_request (messages: List[Message], endpoint: str):
                 json={
                     "messages": messages,
                     "temperature": 0.8,
-                    "max_tokens": 2000
+                    "max_tokens": 500
                 }
             )
 

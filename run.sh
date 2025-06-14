@@ -1,13 +1,8 @@
 #!/bin/bash
 
 VENV_DIR=".venv"
-APP_FILE="main.py"
 HOST="0.0.0.0"
 PORT="8002"
-# MODEL_1="google/gemma-3-1b-it"
-# MODEL_2="google/gemma-3-12b-it"
-
-
 
 # Ray setup for distributed model serving
 RAY_PORT="6379"
@@ -43,27 +38,34 @@ if [ -f .env ]; then
     export $(grep -v '^#' .env | xargs)
 fi
 
-echo "Serving chat models on dedicated servers"
-# scp -i ~/.ssh/vastai -P $REMOTE_PORT_1 ./serve_sm.sh ./.env root@$REMOTE_HOST_1:/workspace/
-# ssh -i ~/.ssh/vastai -p $REMOTE_PORT_1 root@$REMOTE_HOST_1 -L $PORT_1:localhost:$PORT_1 "cd /workspace && chmod +x serve_sm.sh && ./serve_sm.sh"
+# Starting main application
+echo "Starting FastAPI application"
+uvicorn main:app --host $HOST --port $PORT --reload &
+MAIN_PID=$!
+echo "FastAPI application started with PID: $MAIN_PID"
 
+echo "Serving chat models on dedicated servers"
+scp -i ~/.ssh/vastai -P $REMOTE_PORT_1 ./serve_sm.sh ./.env root@$REMOTE_HOST_1:/workspace/
+ssh -i ~/.ssh/vastai -p $REMOTE_PORT_1 root@$REMOTE_HOST_1 -L $PORT_1:localhost:$PORT_1 -N &
+ssh -i ~/.ssh/vastai -p $REMOTE_PORT_1 root@$REMOTE_HOST_1 "cd /workspace && chmod +x serve_sm.sh && ./serve_sm.sh" > sm_server.log 2>&1 &
+MODEL1_PID=$!
 
 echo "Copy script and run server"
 
 # export RAY_ADDRESS="$HEAD_NODE:$RAY_PORT"
-scp -i ~/.ssh/vastai -P $REMOTE_PORT_2 ./serve_lg.sh ./.env root@$REMOTE_HOST_2:/workspace/
-ssh -i ~/.ssh/vastai -p $REMOTE_PORT_2 root@$REMOTE_HOST_2 -L $PORT_2:localhost:$PORT_2 "cd /workspace && chmod +x serve_lg.sh && ./serve_lg.sh"
+scp -i $SSH_KEY_PATH -P $REMOTE_PORT_2 ./serve_lg.sh ./.env root@$REMOTE_HOST_2:/workspace/
+ssh -i $SSH_KEY_PATH -p $REMOTE_PORT_2 root@$REMOTE_HOST_2 -L $PORT_2:localhost:$PORT_2 -N &
+ssh -i $SSH_KEY_PATH -p $REMOTE_PORT_2 root@$REMOTE_HOST_2 "cd /workspace && chmod +x serve_lg.sh && ./serve_lg.sh" > lg_server.log 2>&1 &
+MODEL2_PID=$!
 
-
-# Starting main application
-echo "Starting FastAPI application"
-uvicorn main:app --host $HOST --port $PORT --reload &
 
 cleanup() {
     echo "Stopping all services..."
     kill $MAIN_PID 2>/dev/null
     kill $MODEL1_PID 2>/dev/null
     kill $MODEL2_PID 2>/dev/null
+    ssh -i $SSH_KEY_PATH -p $REMOTE_PORT_1 root@$REMOTE_HOST_1 "pkill -f 'vllm serve'"
+    ssh -i $SSH_KEY_PATH -p $REMOTE_PORT_2 root@$REMOTE_HOST_2 "pkill -f 'vllm serve'"
     
     # Stop Ray cluster
     if [ "$HEAD_NODE" = "localhost" ]; then

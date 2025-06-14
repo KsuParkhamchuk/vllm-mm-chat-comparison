@@ -22,7 +22,8 @@ Runs one model as a part of a main process
 
 ## Running the application
 
-Running the following script will start main application and vllm servers
+1. Setup environmental variables from .env.template
+2. Run the following script
 
 ```
 ./run.sh
