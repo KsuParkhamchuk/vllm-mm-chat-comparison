@@ -1,6 +1,7 @@
 import uuid
 import logging
 from typing import List
+from enum import Enum
 import httpx
 from models.conversation import Conversation
 from models.message import Message
@@ -9,188 +10,207 @@ from models.role import Role
 from models.room import Room
 from data.rooms import rooms
 from config import config
-from .vllm_service import generate_response
+from .vllm_service import VLLMService
 from .wandb_service import log_vllm_request_output_metrics
 
-
 logger = logging.getLogger(__name__)
+vllm_service = VLLMService()
+
+class ErrorMessages(Enum):
+    SM_MODE_CONFIG_ERROR = "Model is not configured"
+    CM_MODE_CONFIG_ERROR = "One of the models is not configured"
+    LLM_ERROR_RESPONSE = "Sorry, I couldn't generate a response at the moment."
+
+class NotFoundError(Exception):
+    def __init__(self, obj, field, value, message=None):
+        self.obj = obj
+        self.field = field
+        self.value = value
+
+        if message is None:
+            message = f"{obj} with {field}={value} not found"
+
+        super().__init__(message)
 
 
-def create_room(mode: ChatMode):
-    """Create new room object"""
+class ConversationService:
 
-    if ChatMode.SINGLE_MODE and not config.MODEL1:
-        raise ValueError("Model is not configured")
+    def create_room(self, mode: ChatMode):
+        """Create new room object"""
 
-    if ChatMode.COMPARISON_MODE and not (config.MODEL1 or config.MODEL2):
-        raise ValueError("One of the models is not configured")
+        if ChatMode.SINGLE_MODE and not config.MODEL1:
+            raise ValueError(ErrorMessages.SM_MODE_CONFIG_ERROR)
 
-    room = Room()
+        if ChatMode.COMPARISON_MODE and not (config.MODEL1 or config.MODEL2):
+            raise ValueError(ErrorMessages.CM_MODE_CONFIG_ERROR)
 
-    if mode == ChatMode.SINGLE_MODE:
-        room.conversations = [Conversation(model=config.MODEL1)]
-    else:
-        room.conversations = [
-            Conversation(model=config.MODEL1),
-            Conversation(model=config.MODEL2),
-        ]
+        room = Room()
 
-    rooms.append(room)
+        if mode == ChatMode.SINGLE_MODE:
+            room.conversations = [Conversation(model=config.MODEL1)]
+        else:
+            room.conversations = [
+                Conversation(model=config.MODEL1),
+                Conversation(model=config.MODEL2),
+            ]
 
-    return room
+        rooms.append(room)
 
-
-def get_active_room(room_id: uuid.UUID) -> Room:
-    """Return current active room"""
-
-    room_obj = next((room for room in rooms if room.id == room_id), None)
-
-    if room_obj is None:
-        raise ValueError(f"Room with ID={room_id} was not found")
-
-    return room_obj
+        return room
 
 
-def get_conversation(conversations, conversation_id: uuid.UUID) -> List[List[Message]]:
-    """Return current active conversations"""
+    def get_active_room(self, room_id: uuid.UUID) -> Room:
+        """Return current active room"""
 
-    conversation = next((conv for conv in conversations if conv.id == conversation_id), None)
+        room_obj = next((room for room in rooms if room.id == room_id), None)
 
-    if conversation is None:
-        raise ValueError(f"Conversation with ID={conversation_id} was not found")
+        if room_obj is None:
+            raise NotFoundError("Room", "id", room_id)
 
-    return conversation
-
-
-def message_constructor(role: Role, content: str) -> Message:
-    """Return appropriate Message object for conversation format"""
-
-    return {"role": role, "content": content}
+        return room_obj
 
 
-def update_conversation(
-    room_id: uuid.UUID,
-    conversation_id: uuid.UUID,
-    role: Role,
-    content: str,
-) -> List[Message]:
-    """Update conversation object with new messages from user and LLM outputs"""
+    def get_conversation(self, conversations, conversation_id: uuid.UUID) -> List[List[Message]]:
+        """Return current active conversations"""
 
-    active_room = get_active_room(room_id=room_id)
-    conversation = get_conversation(active_room.conversations, conversation_id)
-
-    message = message_constructor(role, content)
-    conversation.messages.append(message)
-
-    return conversation.messages
-
-
-def get_response_sm(room_id: uuid.UUID, conversation_id: uuid.UUID, prompt: str) -> str:
-    """Update conversation object with new messages from user and LLM outputs"""
-
-    messages = update_conversation(
-        room_id=room_id, conversation_id=conversation_id, role=Role.USER, content=prompt
-    )
-
-    request_outputs, manual_duration_sec = generate_response(messages)
-
-    if not request_outputs or not request_outputs[0].outputs:
-        logger.error("LLM did not return a valid response or response was empty.")
-        llm_error_response = "Sorry, I couldn't generate a response at the moment."
-
-        update_conversation(
-            room_id=room_id,
-            conversation_id=conversation_id,
-            role=Role.ASSISTANT,
-            content=llm_error_response,
+        conversation = next(
+            (conv for conv in conversations if conv.id == conversation_id), None
         )
 
-        return llm_error_response
+        if conversation is None:
+            raise NotFoundError("Conversation", "id", conversation_id)
 
-    first_result = request_outputs[0]
-    llm_generated_text = first_result.outputs[0].text
-
-    log_vllm_request_output_metrics(
-        first_result, manual_duration_sec=manual_duration_sec
-    )
-
-    update_conversation(
-        room_id=room_id,
-        conversation_id=conversation_id,
-        role=Role.ASSISTANT,
-        content=llm_generated_text,
-    )
-
-    return llm_generated_text
+        return conversation
 
 
-async def make_model_request(messages: List[Message], endpoint: str):
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                endpoint,
-                json={"messages": messages, "temperature": 0.8, "max_tokens": 500},
+    def message_constructor(self, role: Role, content: str) -> Message:
+        """Return appropriate Message object for conversation format"""
+
+        return {"role": role, "content": content}
+
+
+    def update_conversation(
+        self,
+        conversation: Conversation,
+        role: Role,
+        content: str,
+    ) -> List[Message]:
+        """Update conversation object with new messages from user and LLM outputs"""
+
+        message = self.message_constructor(role, content)
+        conversation.messages.append(message)
+
+        return conversation.messages
+
+
+    def get_response_sm(self, conversation: Conversation, prompt: str) -> str:
+        """
+        Update conversation object with new messages from user and LLM outputs in a single mode
+        Single mode generate LLM responses directly using LLM class (from vllm lib)
+        Using LLM class directly allows avoid network overhead, simpler setup. 
+        Good for small models
+        """
+
+        # Add user message to the conversation
+        messages = self.update_conversation(
+            conversation=conversation, role=Role.USER, content=prompt
+        )
+
+        request_outputs, manual_duration_sec = vllm_service.generate_response(messages)
+
+        if not request_outputs or not request_outputs[0].outputs:
+            logger.error("LLM did not return a valid response or response was empty.")
+            llm_error_response = ErrorMessages.LLM_ERROR_RESPONSE
+
+            # Add error response to the conversation
+            self.update_conversation(
+                conversation=conversation,
+                role=Role.ASSISTANT,
+                content=llm_error_response,
             )
 
-            print(f"Response status: {response.status_code}")
+            return llm_error_response
 
-            if response.status_code != 200:
-                print(f"Error response: {response.text}")
-                return None
+        first_result = request_outputs[0]
+        llm_generated_text = first_result.outputs[0].text
 
-            return response.json()
-    except httpx.ConnectError as e:
-        print(f"Connection error: {e} - Could not connect to {endpoint}")
-        return None
-    except httpx.ReadTimeout as e:
-        print(f"Timeout error: {e} - Request to {endpoint} timed out")
-        return None
-    except httpx.HTTPStatusError as e:
-        print(f"HTTP error: {e}")
-        return None
-    except Exception as e:
-        print(f"Error making model request: {type(e).__name__}: {e}")
-        return None
-
-
-async def get_response_cm(
-    room_id: uuid.UUID, conversation_id: uuid.UUID, prompt: str
-) -> str:
-    # TODO optimize room and conversation search
-    active_room = get_active_room(room_id=room_id)
-    conversation_model = get_conversation(
-        active_room.conversations, conversation_id
-    ).model
-    messages = update_conversation(
-        room_id=room_id, conversation_id=conversation_id, role=Role.USER, content=prompt
-    )
-    response = None
-
-    if conversation_model == config.MODEL1:
-        response = await make_model_request(
-            messages=messages, endpoint=config.MODEL1_ENDPOINT
+        log_vllm_request_output_metrics(
+            first_result, manual_duration_sec=manual_duration_sec
         )
 
-    elif conversation_model == config.MODEL2:
-        response = await make_model_request(
-            messages=messages, endpoint=config.MODEL2_ENDPOINT
-        )
-
-    if not response:
-        llm_error_response = "Sorry, I couldn't generate a response at the moment."
-        update_conversation(
-            room_id=room_id,
-            conversation_id=conversation_id,
+        # Add assistant response to the conversation
+        self.update_conversation(
+            conversation=conversation,
             role=Role.ASSISTANT,
-            content=llm_error_response,
+            content=llm_generated_text,
         )
-        return llm_error_response
 
-    update_conversation(
-        room_id=room_id,
-        conversation_id=conversation_id,
-        role=Role.ASSISTANT,
-        content=response["choices"][0]["message"]["content"],
-    )
+        return llm_generated_text
 
-    return response["choices"][0]["message"]["content"]
+
+    async def make_model_request(self, messages: List[Message], model: str):
+        endpoint = None
+
+        if model == config.MODEL1:
+            endpoint=config.MODEL1_ENDPOINT
+        elif model == config.MODEL2:
+            endpoint=config.MODEL2_ENDPOINT
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    endpoint,
+                    json={"messages": messages, "temperature": 0.8, "max_tokens": 500},
+                )
+
+                if response.status_code != 200:
+                    logger.error(f"Error response: {response.text}")
+                    return None
+
+                return response.json()
+        except httpx.ConnectError as e:
+            logger.error("Connection error: %s - Could not connect to %s", e, endpoint)
+            return None
+        except httpx.ReadTimeout as e:
+            logger.error("Timeout error: %s - Request to %s timed out", e, endpoint)
+            return None
+        except httpx.HTTPStatusError as e:
+            logger.error("HTTP error: %s", e)
+            return None
+        except Exception as e:
+            logger.error("Error making model request: %s: %s", type(e).__name__, e)
+            return None
+
+
+    async def get_response_cm(self, conversation: Conversation, prompt: str) -> str:
+        """
+        Update conversation object with new messages from user and LLM outputs in a comparison mode
+        Comparison mode generate LLM responses by making requests to separate vllm servers with different models
+        Scalable approach that enables concurrency
+        """
+        model = conversation.model
+        messages = self.update_conversation(
+            conversation=conversation, role=Role.USER, content=prompt
+        )
+        response = None
+
+        response = await self.make_model_request(
+            messages=messages, model=model
+        )
+
+        if not response:
+            llm_error_response = ErrorMessages.LLM_ERROR_RESPONSE
+            self.update_conversation(
+                conversation=conversation,
+                role=Role.ASSISTANT,
+                content=llm_error_response,
+            )
+            return llm_error_response
+
+        self.update_conversation(
+            conversation=conversation,
+            role=Role.ASSISTANT,
+            content=response["choices"][0]["message"]["content"],
+        )
+
+        return response["choices"][0]["message"]["content"]

@@ -17,14 +17,15 @@ compilation_config = CompilationConfig(
 
 llm = LLM(model="google/gemma-3-1b-it", compilation_config=compilation_config)
 
+class VLLMService:
 
-def generate_response(conversation):
-    """Generates a response using vLLM."""
-    start_time = time.monotonic()
+    def generate_response(self, conversation):
+        """Generates a response using vLLM."""
+        start_time = time.monotonic()
 
-    output = llm.chat(conversation, sampling_params=sampling_params)
+        output = llm.chat(conversation, sampling_params=sampling_params)
 
-    end_time = time.monotonic()
-    duration_sec = end_time - start_time
+        end_time = time.monotonic()
+        duration_sec = end_time - start_time
 
-    return output, duration_sec
+        return output, duration_sec
