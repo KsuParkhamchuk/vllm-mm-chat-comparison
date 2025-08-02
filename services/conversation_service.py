@@ -1,9 +1,11 @@
 import uuid
 import logging
-from typing import List, Literal
+from typing import List
 import httpx
 from models.conversation import Conversation
 from models.message import Message
+from models.mode import ChatMode
+from models.role import Role
 from models.room import Room
 from data.rooms import rooms
 from config import config
@@ -14,16 +16,25 @@ from .wandb_service import log_vllm_request_output_metrics
 logger = logging.getLogger(__name__)
 
 
-def create_room(mode: Literal["sm", "cm"]):
+def create_room(mode: ChatMode):
     """Create new room object"""
 
+    if ChatMode.SINGLE_MODE and not config.MODEL1:
+        raise ValueError("Model is not configured")
+
+    if ChatMode.COMPARISON_MODE and not (config.MODEL1 or config.MODEL2):
+        raise ValueError("One of the models is not configured")
+
     room = Room()
-    
-    if mode == "sm":
-        room.conversations.append(Conversation(model=config.MODEL1))
+
+    if mode == ChatMode.SINGLE_MODE:
+        room.conversations = [Conversation(model=config.MODEL1)]
     else:
-        room.conversations.append(Conversation(model=config.MODEL1))
-        room.conversations.append(Conversation(model=config.MODEL2))
+        room.conversations = [
+            Conversation(model=config.MODEL1),
+            Conversation(model=config.MODEL2),
+        ]
+
     rooms.append(room)
 
     return room
@@ -32,19 +43,26 @@ def create_room(mode: Literal["sm", "cm"]):
 def get_active_room(room_id: uuid.UUID) -> Room:
     """Return current active room"""
 
-    room_obj = next(room for room in rooms if room.id == room_id)
+    room_obj = next((room for room in rooms if room.id == room_id), None)
+
+    if room_obj is None:
+        raise ValueError(f"Room with ID={room_id} was not found")
+
     return room_obj
 
 
 def get_conversation(conversations, conversation_id: uuid.UUID) -> List[List[Message]]:
     """Return current active conversations"""
 
-    conversation = next(conv for conv in conversations if conv.id == conversation_id)
+    conversation = next((conv for conv in conversations if conv.id == conversation_id), None)
+
+    if conversation is None:
+        raise ValueError(f"Conversation with ID={conversation_id} was not found")
 
     return conversation
 
 
-def message_constructor(role: Literal["user", "assistant"], content: str) -> Message:
+def message_constructor(role: Role, content: str) -> Message:
     """Return appropriate Message object for conversation format"""
 
     return {"role": role, "content": content}
@@ -53,7 +71,7 @@ def message_constructor(role: Literal["user", "assistant"], content: str) -> Mes
 def update_conversation(
     room_id: uuid.UUID,
     conversation_id: uuid.UUID,
-    role: Literal["user", "assistant"],
+    role: Role,
     content: str,
 ) -> List[Message]:
     """Update conversation object with new messages from user and LLM outputs"""
@@ -71,7 +89,7 @@ def get_response_sm(room_id: uuid.UUID, conversation_id: uuid.UUID, prompt: str)
     """Update conversation object with new messages from user and LLM outputs"""
 
     messages = update_conversation(
-        room_id=room_id, conversation_id=conversation_id, role="user", content=prompt
+        room_id=room_id, conversation_id=conversation_id, role=Role.USER, content=prompt
     )
 
     request_outputs, manual_duration_sec = generate_response(messages)
@@ -83,7 +101,7 @@ def get_response_sm(room_id: uuid.UUID, conversation_id: uuid.UUID, prompt: str)
         update_conversation(
             room_id=room_id,
             conversation_id=conversation_id,
-            role="assistant",
+            role=Role.ASSISTANT,
             content=llm_error_response,
         )
 
@@ -99,7 +117,7 @@ def get_response_sm(room_id: uuid.UUID, conversation_id: uuid.UUID, prompt: str)
     update_conversation(
         room_id=room_id,
         conversation_id=conversation_id,
-        role="assistant",
+        role=Role.ASSISTANT,
         content=llm_generated_text,
     )
 
@@ -144,7 +162,7 @@ async def get_response_cm(
         active_room.conversations, conversation_id
     ).model
     messages = update_conversation(
-        room_id=room_id, conversation_id=conversation_id, role="user", content=prompt
+        room_id=room_id, conversation_id=conversation_id, role=Role.USER, content=prompt
     )
     response = None
 
@@ -163,7 +181,7 @@ async def get_response_cm(
         update_conversation(
             room_id=room_id,
             conversation_id=conversation_id,
-            role="assistant",
+            role=Role.ASSISTANT,
             content=llm_error_response,
         )
         return llm_error_response
@@ -171,7 +189,7 @@ async def get_response_cm(
     update_conversation(
         room_id=room_id,
         conversation_id=conversation_id,
-        role="assistant",
+        role=Role.ASSISTANT,
         content=response["choices"][0]["message"]["content"],
     )
 

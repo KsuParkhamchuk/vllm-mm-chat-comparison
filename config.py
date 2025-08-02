@@ -3,10 +3,10 @@ from dotenv import load_dotenv
 
 class Config():
     """Config class allows easier models and endpoints configuration"""
-    MODEL1_ENDPOINT=""
-    MODEL2_ENDPOINT=""
-    MODEL1=""
-    MODEL2=""
+    MODEL1_ENDPOINT=None
+    MODEL2_ENDPOINT=None
+    MODEL1=None
+    MODEL2=None
 
     @classmethod
     def from_env (cls):
