@@ -1,14 +1,18 @@
 import os
 import logging
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, status
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from app_logging import setup_logging
+from models.room import Room
 from services.wandb_service import init_wandb
 from services.conversation_service import ConversationService
 from services.vllm_service import llm
 from models.mode import ChatMode
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+setup_logging()
 logger = logging.getLogger(__name__)
 
 model_name_from_vllm = "unknown_model"
@@ -36,18 +40,20 @@ static_files_dir = os.path.join(current_file_dir, "interface")
 index_html_path = os.path.join(static_files_dir, "index.html")
 
 
-@app.post("/room/{mode}")
+@app.post("/room/{mode}", response_model=Room, status_code=status.HTTP_201_CREATED)
 def create_new_room(mode: ChatMode):
     try:
         room = conversation_service.create_room(mode)
     except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(
+            status_code=500, detail={"error": str(e), "status": "error"}
+        ) from e
 
     return room
 
 
-@app.get("/room/{mode}/{room_id}")
-def get_room_page(mode: ChatMode, room_id: str):
+@app.get("/room/{mode}/{room_id}", response_model=None)
+def get_room_page() -> FileResponse | HTMLResponse:
     if os.path.exists(index_html_path):
         return FileResponse(index_html_path, media_type="text/html")
     else:
@@ -58,7 +64,7 @@ def get_room_page(mode: ChatMode, room_id: str):
 
 
 # This endpoint is used for both - single and comparison mode
-# In comparison mode 2 separate connections are opened 
+# In comparison mode 2 separate connections are opened
 @app.websocket("/ws/room/{mode}/{room_id}/{conversation_id}")
 async def update_conversation(
     websocket: WebSocket, mode: ChatMode, room_id: str, conversation_id: str
@@ -77,13 +83,11 @@ async def update_conversation(
 
             if mode == ChatMode.SINGLE_MODE:
                 llm_response = conversation_service.get_response_sm(
-                    conversation=conversation,
-                    prompt=data
+                    conversation=conversation, prompt=data
                 )
             else:
                 llm_response = await conversation_service.get_response_cm(
-                    conversation=conversation,
-                    prompt=data
+                    conversation=conversation, prompt=data
                 )
 
             response_data = {

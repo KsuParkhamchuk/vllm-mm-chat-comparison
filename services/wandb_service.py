@@ -1,14 +1,10 @@
 import logging
 import atexit
+from typing import Any
 import wandb
 from vllm import RequestOutput
 
 logger = logging.getLogger(__name__)
-if not logger.hasHandlers():
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
 
 _wandb_initialized = False
 _run = None
@@ -44,7 +40,7 @@ def init_wandb(
         # Register finish_wandb_run to be called on normal program termination
         atexit.register(finish_wandb_run)
     except Exception as e:
-        logger.error(f"Failed to initialize W&B: {e}")
+        logger.error("Failed to initialize W&B: %s", e)
         _wandb_initialized = False
         _run = None
 
@@ -56,12 +52,11 @@ def log_metrics(metrics: dict, step: int = None):
     if _wandb_initialized and _run:
         try:
             _run.log(metrics, step=step)
-            logger.debug(f"Logged metrics to W&B: {metrics}")
+            logger.debug("Logged metrics to W&B: %s", metrics)
         except Exception as e:
-            logger.error(f"Failed to log metrics to W&B: {e}")
+            logger.error("Failed to log metrics to W&B: %s", e)
     elif not _wandb_initialized:
         logger.debug("W&B not initialized. Skipping metrics logging.")
-        pass
 
 
 def log_generation_data(
@@ -108,7 +103,7 @@ def finish_wandb_run():
 
 
 def log_vllm_request_output_metrics(
-    vllm_request_output: RequestOutput if RequestOutput else "typing.Any",
+    vllm_request_output: RequestOutput | Any,
     manual_duration_sec: float = None,
 ):
     """Extracts metrics from vLLM's RequestOutput and logs them to W&B."""
@@ -123,7 +118,7 @@ def log_vllm_request_output_metrics(
         num_generated_tokens = len(vllm_request_output.outputs[0].token_ids)
     else:
         logger.warning(
-            f"No outputs found in vLLM RequestOutput for request_id: {vllm_request_output.request_id} when calculating token counts."
+            "No outputs found in vLLM RequestOutput for request_id: %s when calculating token counts.", vllm_request_output.request_id
         )
 
     # Base metrics that are always available
@@ -156,7 +151,7 @@ def log_vllm_request_output_metrics(
             num_generated_tokens = len(vllm_request_output.outputs[0].token_ids)
         else:
             logger.warning(
-                f"No outputs found in vLLM RequestOutput for request_id: {vllm_request_output.request_id}"
+                "No outputs found in vLLM RequestOutput for request_id: %s", vllm_request_output.request_id
             )
 
         # Initialize metrics to None

@@ -10,5 +10,5 @@ class Room(BaseModel):
     Chat includes 2 models therefore handles the same number of conversations
     """
 
-    id: uuid.UUID = Field(default_factory=uuid.uuid4())
+    id: uuid.UUID = Field(default_factory=uuid.uuid4)
     conversations: List[Conversation] = Field(default_factory=list)

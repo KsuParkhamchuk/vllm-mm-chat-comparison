@@ -55,14 +55,14 @@ class ConversationService:
             ]
 
         rooms.append(room)
-
+        
         return room
 
 
     def get_active_room(self, room_id: uuid.UUID) -> Room:
         """Return current active room"""
 
-        room_obj = next((room for room in rooms if room.id == room_id), None)
+        room_obj = next((room for room in rooms if str(room.id) == room_id), None)
 
         if room_obj is None:
             raise NotFoundError("Room", "id", room_id)
@@ -74,7 +74,7 @@ class ConversationService:
         """Return current active conversations"""
 
         conversation = next(
-            (conv for conv in conversations if conv.id == conversation_id), None
+            (conv for conv in conversations if str(conv.id) == conversation_id), None
         )
 
         if conversation is None:
@@ -113,7 +113,7 @@ class ConversationService:
 
         # Add user message to the conversation
         messages = self.update_conversation(
-            conversation=conversation, role=Role.USER, content=prompt
+            conversation=conversation, role=Role.USER.value, content=prompt
         )
 
         request_outputs, manual_duration_sec = vllm_service.generate_response(messages)
@@ -125,7 +125,7 @@ class ConversationService:
             # Add error response to the conversation
             self.update_conversation(
                 conversation=conversation,
-                role=Role.ASSISTANT,
+                role=Role.ASSISTANT.value,
                 content=llm_error_response,
             )
 
@@ -141,7 +141,7 @@ class ConversationService:
         # Add assistant response to the conversation
         self.update_conversation(
             conversation=conversation,
-            role=Role.ASSISTANT,
+            role=Role.ASSISTANT.value,
             content=llm_generated_text,
         )
 
@@ -164,7 +164,7 @@ class ConversationService:
                 )
 
                 if response.status_code != 200:
-                    logger.error(f"Error response: {response.text}")
+                    logger.error("Error response: %s", response.text)
                     return None
 
                 return response.json()
@@ -190,7 +190,7 @@ class ConversationService:
         """
         model = conversation.model
         messages = self.update_conversation(
-            conversation=conversation, role=Role.USER, content=prompt
+            conversation=conversation, role=Role.USER.value, content=prompt
         )
         response = None
 
@@ -202,14 +202,14 @@ class ConversationService:
             llm_error_response = ErrorMessages.LLM_ERROR_RESPONSE
             self.update_conversation(
                 conversation=conversation,
-                role=Role.ASSISTANT,
+                role=Role.ASSISTANT.value,
                 content=llm_error_response,
             )
             return llm_error_response
 
         self.update_conversation(
             conversation=conversation,
-            role=Role.ASSISTANT,
+            role=Role.ASSISTANT.value,
             content=response["choices"][0]["message"]["content"],
         )
 

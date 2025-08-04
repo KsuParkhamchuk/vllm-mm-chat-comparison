@@ -23,7 +23,10 @@ class VLLMService:
         """Generates a response using vLLM."""
         start_time = time.monotonic()
 
-        output = llm.chat(conversation, sampling_params=sampling_params)
+        try:
+            output = llm.chat(conversation, sampling_params=sampling_params)
+        except Exception as e:
+            raise Exception(f"Error generating response with vLLM: {str(e)}") from e
 
         end_time = time.monotonic()
         duration_sec = end_time - start_time

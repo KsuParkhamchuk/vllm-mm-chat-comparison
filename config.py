@@ -18,6 +18,6 @@ class Config():
         cnf.MODEL1 = os.getenv("MODEL1", cls.MODEL1)
         cnf.MODEL2 = os.getenv("MODEL2", cls.MODEL2)
 
-        return config
+        return cnf
 
 config = Config.from_env()

@@ -43,7 +43,12 @@ const createMessageItem = (message, role) => {
   messageItem.classList.add(
     role == "user" ? "usr-message" : "assistant-message"
   );
-  messageItem.textContent = message;
+  if (role !== "user") {
+    messageItem.innerHTML = marked.parse(message);
+  }
+  else {
+    messageItem.innerHTML = message
+  }
 
   return messageItem;
 };
