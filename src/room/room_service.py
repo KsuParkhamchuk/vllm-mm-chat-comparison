@@ -1,40 +1,22 @@
 import uuid
 import logging
 from typing import List
-from enum import Enum
 import httpx
-from config import config
+from src.config import config
 from src.data.rooms import rooms
 from src.services.vllm_service import VLLMService
 from src.services.wandb_service import log_vllm_request_output_metrics
 from .models import Conversation, Message, Role, Room, ChatMode
+from .exceptions import NotFoundError, ErrorMessages
 
 
 logger = logging.getLogger(__name__)
 vllm_service = VLLMService()
 
 
-class ErrorMessages(Enum):
-    SM_MODE_CONFIG_ERROR = "Model is not configured"
-    CM_MODE_CONFIG_ERROR = "One of the models is not configured"
-    LLM_ERROR_RESPONSE = "Sorry, I couldn't generate a response at the moment."
+class RoomService:
 
-
-class NotFoundError(Exception):
-    def __init__(self, obj, field, value, message=None):
-        self.obj = obj
-        self.field = field
-        self.value = value
-
-        if message is None:
-            message = f"{obj} with {field}={value} not found"
-
-        super().__init__(message)
-
-
-class ConversationService:
-
-    def create_room(self, mode: ChatMode):
+    def create_room(self, mode: ChatMode, room=Room):
         """Create new room object"""
 
         if ChatMode.SINGLE_MODE and not config.MODEL1:
@@ -42,8 +24,6 @@ class ConversationService:
 
         if ChatMode.COMPARISON_MODE and not (config.MODEL1 or config.MODEL2):
             raise ValueError(ErrorMessages.CM_MODE_CONFIG_ERROR)
-
-        room = Room()
 
         if mode == ChatMode.SINGLE_MODE:
             room.conversations = [Conversation(model=config.MODEL1)]

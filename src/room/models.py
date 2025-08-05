@@ -3,13 +3,16 @@ from enum import Enum
 from typing import List, Literal
 from datetime import datetime
 from pydantic import BaseModel, Field
-from config import config
+from src.config import config
+
 
 class Message(BaseModel):
     """Represents a message in the conversation with LLM."""
+
     role: str
     content: str
     # timestamp: datetime # Example if you add timestamp
+
 
 class Conversation(BaseModel):
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
@@ -17,19 +20,24 @@ class Conversation(BaseModel):
     messages: List[Message] = Field(default_factory=list)
     createdAt: datetime = Field(default_factory=datetime.now)
 
+
 class ChatMode(Enum):
     """
-    Distinguishes between two application modes: 
+    Distinguishes between two application modes:
         single - uses one model
         comparison - uses 2 models(bigger and smaller) and generates two separate results in parallel
     """
-    SINGLE_MODE = 'sm'
-    COMPARISON_MODE = 'cm'
+
+    SINGLE_MODE = "sm"
+    COMPARISON_MODE = "cm"
+
 
 class Role(Enum):
     """Conversation roles enum"""
-    USER = 'user'
-    ASSISTANT = 'assistant'
+
+    USER = "user"
+    ASSISTANT = "assistant"
+
 
 class Room(BaseModel):
     """

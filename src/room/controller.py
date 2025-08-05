@@ -1,48 +1,41 @@
-import os
 import logging
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, status
+from pathlib import Path
+from fastapi import (
+    APIRouter,
+    Depends,
+    WebSocket,
+    WebSocketDisconnect,
+    HTTPException,
+    status,
+)
 from fastapi.responses import HTMLResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
-from app_logging import setup_logging
-from src.chat.models import Room, ChatMode
-from src.services.wandb_service import init_wandb
-from src.chat.conversation_service import ConversationService
-from src.services.vllm_service import llm
+from src.room.models import Room, ChatMode
+from src.room.room_service import RoomService
 
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-setup_logging()
 logger = logging.getLogger(__name__)
 
-model_name_from_vllm = "unknown_model"
-
-try:
-    if hasattr(llm, "llm_engine") and hasattr(llm.llm_engine, "model_config"):
-        model_name_from_vllm = llm.llm_engine.model_config.model
-    elif hasattr(
-        llm, "model_config"
-    ):  # Fallback for simpler vLLM wrappers or future changes
-        model_name_from_vllm = llm.model_config.model
-except AttributeError:
-    print("Could not retrieve model name from vLLM object for W&B config.")
-
-wandb_config = {
-    "model_name": model_name_from_vllm,
-}
-init_wandb(project_name="mm-chat-comparison", config=wandb_config)
-
-app = FastAPI()
-conversation_service = ConversationService()
-
-current_file_dir = os.path.dirname(os.path.abspath(__file__))
-static_files_dir = os.path.join(current_file_dir, "interface")
-index_html_path = os.path.join(static_files_dir, "index.html")
+index_html_path = Path(__file__).resolve().parent.parent.parent / "interface/index.html"
 
 
-@app.post("/room/{mode}", response_model=Room, status_code=status.HTTP_201_CREATED)
-def create_new_room(mode: ChatMode):
+def get_conversation_service():
+    return RoomService()
+
+
+def get_room():
+    return Room()
+
+
+router = APIRouter(prefix="/room")
+
+
+@router.post("/{mode}", response_model=Room, status_code=status.HTTP_201_CREATED)
+def create_new_room(
+    mode: ChatMode,
+    conversation_service: RoomService = Depends(get_conversation_service),
+    room: Room = Depends(get_room),
+):
     try:
-        room = conversation_service.create_room(mode)
+        room = conversation_service.create_room(mode, room)
     except Exception as e:
         raise HTTPException(
             status_code=500, detail={"error": str(e), "status": "error"}
@@ -51,9 +44,9 @@ def create_new_room(mode: ChatMode):
     return room
 
 
-@app.get("/room/{mode}/{room_id}", response_model=None)
+@router.get("/{mode}/{room_id}", response_model=None)
 def get_room_page() -> FileResponse | HTMLResponse:
-    if os.path.exists(index_html_path):
+    if Path.exists(index_html_path):
         return FileResponse(index_html_path, media_type="text/html")
     else:
         return HTMLResponse(
@@ -64,9 +57,13 @@ def get_room_page() -> FileResponse | HTMLResponse:
 
 # This endpoint is used for both - single and comparison mode
 # In comparison mode 2 separate connections are opened
-@app.websocket("/ws/room/{mode}/{room_id}/{conversation_id}")
+@router.websocket("/ws/{mode}/{room_id}/{conversation_id}")
 async def update_conversation(
-    websocket: WebSocket, mode: ChatMode, room_id: str, conversation_id: str
+    websocket: WebSocket,
+    mode: ChatMode,
+    room_id: str,
+    conversation_id: str,
+    conversation_service: RoomService = Depends(get_conversation_service),
 ):
     """Update conversation based on mode (single or comparison)"""
     await websocket.accept()
@@ -100,6 +97,3 @@ async def update_conversation(
     except Exception as e:
         logger.error("Error: %s", e)
         await websocket.close(code=1011)
-
-
-app.mount("/", StaticFiles(directory=static_files_dir, html=True), name="static")

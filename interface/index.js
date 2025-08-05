@@ -12,7 +12,7 @@ const establishConnection = (mode) => {
 
   active_room.conversations.forEach((conv) => {
     newSocket = new WebSocket(
-      `ws://localhost:8002/ws/room/${mode}/${active_room.id}/${conv.id}`
+      `ws://localhost:8002/room/ws/${mode}/${active_room.id}/${conv.id}`
     );
 
     newSocket.addEventListener("open", () => {
@@ -45,9 +45,8 @@ const createMessageItem = (message, role) => {
   );
   if (role !== "user") {
     messageItem.innerHTML = marked.parse(message);
-  }
-  else {
-    messageItem.innerHTML = message
+  } else {
+    messageItem.innerHTML = message;
   }
 
   return messageItem;
