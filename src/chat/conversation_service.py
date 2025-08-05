@@ -3,23 +3,22 @@ import logging
 from typing import List
 from enum import Enum
 import httpx
-from models.conversation import Conversation
-from models.message import Message
-from models.mode import ChatMode
-from models.role import Role
-from models.room import Room
-from data.rooms import rooms
 from config import config
-from .vllm_service import VLLMService
-from .wandb_service import log_vllm_request_output_metrics
+from src.data.rooms import rooms
+from src.services.vllm_service import VLLMService
+from src.services.wandb_service import log_vllm_request_output_metrics
+from .models import Conversation, Message, Role, Room, ChatMode
+
 
 logger = logging.getLogger(__name__)
 vllm_service = VLLMService()
+
 
 class ErrorMessages(Enum):
     SM_MODE_CONFIG_ERROR = "Model is not configured"
     CM_MODE_CONFIG_ERROR = "One of the models is not configured"
     LLM_ERROR_RESPONSE = "Sorry, I couldn't generate a response at the moment."
+
 
 class NotFoundError(Exception):
     def __init__(self, obj, field, value, message=None):
@@ -55,9 +54,8 @@ class ConversationService:
             ]
 
         rooms.append(room)
-        
-        return room
 
+        return room
 
     def get_active_room(self, room_id: uuid.UUID) -> Room:
         """Return current active room"""
@@ -69,9 +67,10 @@ class ConversationService:
 
         return room_obj
 
-
-    def get_conversation(self, conversations, conversation_id: uuid.UUID) -> List[List[Message]]:
-        """Return current active conversations"""
+    def get_conversation(
+        self, conversations, conversation_id: uuid.UUID
+    ) -> List[List[Message]]:
+        """Return current active conversation"""
 
         conversation = next(
             (conv for conv in conversations if str(conv.id) == conversation_id), None
@@ -82,12 +81,10 @@ class ConversationService:
 
         return conversation
 
-
     def message_constructor(self, role: Role, content: str) -> Message:
         """Return appropriate Message object for conversation format"""
 
         return {"role": role, "content": content}
-
 
     def update_conversation(
         self,
@@ -102,13 +99,19 @@ class ConversationService:
 
         return conversation.messages
 
-
     def get_response_sm(self, conversation: Conversation, prompt: str) -> str:
         """
         Update conversation object with new messages from user and LLM outputs in a single mode
         Single mode generate LLM responses directly using LLM class (from vllm lib)
-        Using LLM class directly allows avoid network overhead, simpler setup. 
+        Using LLM class directly allows avoid network overhead, simpler setup.
         Good for small models
+
+        Args:
+            conversation: Conversation object containing information about a particular conversation
+            prompt: User prompt to the model
+
+        Returns:
+            str: string that contains the LLM response or error message
         """
 
         # Add user message to the conversation
@@ -147,14 +150,28 @@ class ConversationService:
 
         return llm_generated_text
 
-
     async def make_model_request(self, messages: List[Message], model: str):
+        """
+        Make an asynchronous HTTP request to a language model endpoint.
+
+        Args:
+            messages: List of Message objects containing the conversation history
+            model: String identifier of the model to use (must match config.MODEL1 or config.MODEL2)
+
+        Returns:
+            dict: The JSON response from the model endpoint, or None if the request failed
+
+        Raises:
+            httpx.ConnectError: If connection to the endpoint fails
+            httpx.ReadTimeout: If the request times out
+            httpx.HTTPStatusError: If the server returns an error status code
+        """
         endpoint = None
 
         if model == config.MODEL1:
-            endpoint=config.MODEL1_ENDPOINT
+            endpoint = config.MODEL1_ENDPOINT
         elif model == config.MODEL2:
-            endpoint=config.MODEL2_ENDPOINT
+            endpoint = config.MODEL2_ENDPOINT
 
         try:
             async with httpx.AsyncClient() as client:
@@ -181,12 +198,18 @@ class ConversationService:
             logger.error("Error making model request: %s: %s", type(e).__name__, e)
             return None
 
-
     async def get_response_cm(self, conversation: Conversation, prompt: str) -> str:
         """
         Update conversation object with new messages from user and LLM outputs in a comparison mode
         Comparison mode generate LLM responses by making requests to separate vllm servers with different models
         Scalable approach that enables concurrency
+
+        Args:
+            conversation: Conversation object containing information about a particular conversation
+            prompt: User prompt to the model
+
+        Returns:
+            str: string that contains the LLM response or error message
         """
         model = conversation.model
         messages = self.update_conversation(
@@ -194,9 +217,7 @@ class ConversationService:
         )
         response = None
 
-        response = await self.make_model_request(
-            messages=messages, model=model
-        )
+        response = await self.make_model_request(messages=messages, model=model)
 
         if not response:
             llm_error_response = ErrorMessages.LLM_ERROR_RESPONSE

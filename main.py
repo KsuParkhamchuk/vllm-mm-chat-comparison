@@ -4,11 +4,10 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, stat
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from app_logging import setup_logging
-from models.room import Room
-from services.wandb_service import init_wandb
-from services.conversation_service import ConversationService
-from services.vllm_service import llm
-from models.mode import ChatMode
+from src.chat.models import Room, ChatMode
+from src.services.wandb_service import init_wandb
+from src.chat.conversation_service import ConversationService
+from src.services.vllm_service import llm
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 

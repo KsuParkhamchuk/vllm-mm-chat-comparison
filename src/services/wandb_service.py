@@ -6,8 +6,8 @@ from vllm import RequestOutput
 
 logger = logging.getLogger(__name__)
 
-_wandb_initialized = False
-_run = None
+_WANDB_INITIALIZED = False
+_RUN = None
 
 
 def init_wandb(
@@ -20,42 +20,42 @@ def init_wandb(
     Initializes a new W&B run.
     Ensure WANDB_API_KEY environment variable is set.
     """
-    global _wandb_initialized, _run
-    if _wandb_initialized:
+    global _WANDB_INITIALIZED, _RUN
+    if _WANDB_INITIALIZED:
         logger.info("W&B is already initialized.")
         return
 
     try:
-        _run = wandb.init(
+        _RUN = wandb.init(
             project=project_name,
             name=run_name,
             config=config,
             job_type=job_type,
             reinit=True,
         )
-        _wandb_initialized = True
+        _WANDB_INITIALIZED = True
         logger.info(
-            f"W&B initialized for project '{project_name}', run_id: {_run.id if _run else 'N/A'}"
+            f"W&B initialized for project '{project_name}', run_id: {_RUN.id if _RUN else 'N/A'}"
         )
         # Register finish_wandb_run to be called on normal program termination
         atexit.register(finish_wandb_run)
     except Exception as e:
         logger.error("Failed to initialize W&B: %s", e)
-        _wandb_initialized = False
-        _run = None
+        _WANDB_INITIALIZED = False
+        _RUN = None
 
 
 def log_metrics(metrics: dict, step: int = None):
     """
     Logs a dictionary of metrics to W&B.
     """
-    if _wandb_initialized and _run:
+    if _WANDB_INITIALIZED and _RUN:
         try:
-            _run.log(metrics, step=step)
+            _RUN.log(metrics, step=step)
             logger.debug("Logged metrics to W&B: %s", metrics)
         except Exception as e:
             logger.error("Failed to log metrics to W&B: %s", e)
-    elif not _wandb_initialized:
+    elif not _WANDB_INITIALIZED:
         logger.debug("W&B not initialized. Skipping metrics logging.")
 
 
@@ -87,19 +87,19 @@ def finish_wandb_run():
     Finishes the current W&B run, if active.
     Called automatically on exit if init_wandb was successful.
     """
-    global _wandb_initialized, _run
-    if _wandb_initialized and _run:
-        logger.info(f"Attempting to finish W&B run: {_run.id}")
+    global _WANDB_INITIALIZED, _RUN
+    if _WANDB_INITIALIZED and _RUN:
+        logger.info(f"Attempting to finish W&B run: {_RUN.id}")
         try:
             wandb.finish()  # wandb.finish() uses the current active run
-            logger.info(f"W&B run {_run.id} finished.")
+            logger.info(f"W&B run {_RUN.id} finished.")
         except Exception as e:
-            logger.error(f"Error finishing W&B run {_run.id}: {e}")
+            logger.error(f"Error finishing W&B run {_RUN.id}: {e}")
         finally:
-            _wandb_initialized = False
-            _run = None
-    elif _run and not _wandb_initialized:  # If run was attempted but failed init
-        _run = None
+            _WANDB_INITIALIZED = False
+            _RUN = None
+    elif _RUN and not _WANDB_INITIALIZED:  # If run was attempted but failed init
+        _RUN = None
 
 
 def log_vllm_request_output_metrics(
@@ -118,7 +118,8 @@ def log_vllm_request_output_metrics(
         num_generated_tokens = len(vllm_request_output.outputs[0].token_ids)
     else:
         logger.warning(
-            "No outputs found in vLLM RequestOutput for request_id: %s when calculating token counts.", vllm_request_output.request_id
+            "No outputs found in vLLM RequestOutput for request_id: %s when calculating token counts.",
+            vllm_request_output.request_id,
         )
 
     # Base metrics that are always available
@@ -151,7 +152,8 @@ def log_vllm_request_output_metrics(
             num_generated_tokens = len(vllm_request_output.outputs[0].token_ids)
         else:
             logger.warning(
-                "No outputs found in vLLM RequestOutput for request_id: %s", vllm_request_output.request_id
+                "No outputs found in vLLM RequestOutput for request_id: %s",
+                vllm_request_output.request_id,
             )
 
         # Initialize metrics to None
@@ -244,7 +246,6 @@ def log_vllm_request_output_metrics(
         )
 
     # Filter out ALL None values from the combined metrics_to_log before logging
-    # This was previously inside the 'if vllm_request_output.metrics:' block
     metrics_to_log_filtered = {k: v for k, v in metrics_to_log.items() if v is not None}
 
     if metrics_to_log_filtered:
